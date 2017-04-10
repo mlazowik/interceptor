@@ -1,5 +1,5 @@
-#ifndef INTERCEPT_PROGRAM_HEADERS_H
-#define INTERCEPT_PROGRAM_HEADERS_H
+#ifndef INTERCEPTOR_PROGRAM_HEADERS_H
+#define INTERCEPTOR_PROGRAM_HEADERS_H
 
 struct program_headers {
     void *(*get_function_address)(const char*);
@@ -7,4 +7,4 @@ struct program_headers {
 
 extern const struct program_headers ProgramHeaders;
 
-#endif //INTERCEPT_PROGRAM_HEADERS_H
+#endif //INTERCEPTOR_PROGRAM_HEADERS_H

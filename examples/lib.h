@@ -1,6 +1,6 @@
-#ifndef INTERCEPT_LIB_H
-#define INTERCEPT_LIB_H
+#ifndef INTERCEPTOR_LIB_H
+#define INTERCEPTOR_LIB_H
 
 void dyn_puts();
 
-#endif //INTERCEPT_LIB_H
+#endif //INTERCEPTOR_LIB_H

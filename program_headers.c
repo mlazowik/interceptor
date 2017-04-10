@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include <stdio.h>
+
 #include "program_headers.h"
 
 struct function_address_query {
@@ -15,9 +17,10 @@ struct function_address_query {
 };
 
 static bool is_vdso(struct dl_phdr_info *info) {
-    unsigned long vdso_address = getauxval(AT_SYSINFO_EHDR);
+    ElfW(Ehdr*) ehdr_vdso = (ElfW(Ehdr*)) getauxval(AT_SYSINFO_EHDR);
+    ElfW(Phdr*) phdr_vdso = (ElfW(Phdr*)) ((void*)ehdr_vdso + ehdr_vdso->e_phoff);
 
-    return info->dlpi_addr == vdso_address;
+    return info->dlpi_phdr == phdr_vdso;
 }
 
 static bool is_dynamic_section(const ElfW(Phdr) program_header) {

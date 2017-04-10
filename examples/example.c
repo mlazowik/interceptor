@@ -3,7 +3,7 @@
 #include "lib.h"
 #include "../interceptor.h"
 
-int (*puts_orig) (const char *);
+int (*puts_orig)(const char *);
 
 int my_puts(const char *s) {
     puts_orig("intercepted");

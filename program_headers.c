@@ -148,7 +148,7 @@ replace_got_entry(struct dl_phdr_info *info, size_t size, void *data) {
 
         for (size_t j = 0;
              j < dyn.relocation_records_size / relocation_record_size; j++) {
-            // Elf64_Rel is a prefix of Elf64_Rela, we do not care about the extra fields
+            // Elf64_Rel is a prefix of Elf64_Rela, we do not care about the extra field
             Elf64_Rel *rel = (Elf64_Rel *) (dyn.relocation_records_address +
                                             relocation_record_size * j);
 
@@ -156,10 +156,10 @@ replace_got_entry(struct dl_phdr_info *info, size_t size, void *data) {
                 continue;
             }
 
-            Elf64_Addr rel_addr = info->dlpi_addr + rel->r_offset;
+            Elf64_Addr relocation_address = info->dlpi_addr + rel->r_offset;
             if (symbol_is_named(&dyn.sym[ELF64_R_SYM(rel->r_info)],
                                 dyn.strtab, query->name)) {
-                *((Elf64_Addr *) rel_addr) = (Elf64_Addr) query->address;
+                *((Elf64_Addr *) relocation_address) = (Elf64_Addr) query->address;
             }
         }
     }

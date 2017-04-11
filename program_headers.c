@@ -7,8 +7,6 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include <stdio.h>
-
 #include "program_headers.h"
 
 struct address_query {

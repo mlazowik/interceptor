@@ -41,7 +41,7 @@ static bool symbol_is_named(ElfW(Sym *)sym, char *strtab, const char *name) {
     return strcmp(&strtab[sym->st_name], name) == 0;
 }
 
-void *get_symbol_address(struct dl_phdr_info *info, ElfW(Sym *)sym, char *strtab) {
+void *get_symbol_address(struct dl_phdr_info *info, ElfW(Sym *)sym) {
     void *address = (void *) (info->dlpi_addr + sym->st_value);
 
     if (ELF64_ST_TYPE(sym->st_info) == STT_GNU_IFUNC) {
@@ -84,7 +84,7 @@ static int get_function_address_from_program_headers(struct dl_phdr_info *info,
         while ((void *) sym < (void *) strtab) {
             if (is_symbol_defined(sym) &&
                 symbol_is_named(sym, strtab, query->name)) {
-                query->address = get_symbol_address(info, sym, strtab);
+                query->address = get_symbol_address(info, sym);
             }
 
             sym++;

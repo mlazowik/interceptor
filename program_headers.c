@@ -132,7 +132,6 @@ static int replace_got_entry(struct dl_phdr_info *info, size_t size, void *data)
         for (size_t j = 0; j < rel_records_size / rel_entry_size; j++) {
             if (rel_type == 1) {
                 ElfW(Rel*) rel = (ElfW(Rel*)) (rel_base + rel_entry_size * j);
-                printf("\t\trel: %p\n", rel->r_offset);
             } else {
                 ElfW(Rela*) rela = (ElfW(Rela*)) (rel_base + rel_entry_size * j);
 
@@ -154,6 +153,7 @@ static int replace_got_entry(struct dl_phdr_info *info, size_t size, void *data)
 void *get_function_address(const char *name) {
     struct address_query query;
     query.name = name;
+    query.address = NULL;
 
     dl_iterate_phdr(get_function_address_from_program_headers, &query);
 

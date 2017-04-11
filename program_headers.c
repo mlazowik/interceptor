@@ -22,11 +22,11 @@ static bool is_vdso(struct dl_phdr_info *info) {
     return info->dlpi_phdr == phdr_vdso;
 }
 
-static bool is_dynamic_section(const ElfW(Phdr) program_header) {
+static bool is_dynamic_segment(const ElfW(Phdr) program_header) {
     return program_header.p_type == PT_DYNAMIC;
 }
 
-ElfW(Dyn *)get_dynamic_section_address(struct dl_phdr_info *info,
+ElfW(Dyn *)get_dynamic_segment_address(struct dl_phdr_info *info,
                                        const ElfW(Phdr) program_header) {
     return (ElfW(Dyn *)) (info->dlpi_addr + program_header.p_vaddr);
 }
@@ -50,6 +50,42 @@ void *get_symbol_address(struct dl_phdr_info *info, ElfW(Sym *)sym) {
     return address;
 }
 
+struct dynamic_segment {
+    ElfW(Sym *)sym;
+    char *strtab;
+    ElfW(Xword) relocation_records_size;
+    ElfW(Xword) relocation_records_type;
+    char *relocation_records_address;
+};
+
+struct dynamic_segment parse_dynamic_segment(Elf64_Dyn *dyn) {
+    struct dynamic_segment parsed;
+
+    parsed.sym = NULL;
+    parsed.strtab = NULL;
+    parsed.relocation_records_size = 0;
+    parsed.relocation_records_type = 0;
+    parsed.relocation_records_address = NULL;
+
+    while (dyn->d_tag != DT_NULL) {
+        if (dyn->d_tag == DT_STRTAB) {
+            parsed.strtab = (char *) dyn->d_un.d_ptr;
+        } else if (dyn->d_tag == DT_SYMTAB) {
+            parsed.sym = (ElfW(Sym *)) dyn->d_un.d_ptr;
+        } else if (dyn->d_tag == DT_PLTRELSZ) {
+            parsed.relocation_records_size = dyn->d_un.d_val;
+        } else if (dyn->d_tag == DT_PLTREL) {
+            parsed.relocation_records_type = dyn->d_un.d_val;
+        } else if (dyn->d_tag == DT_JMPREL) {
+            parsed.relocation_records_address = (char *) dyn->d_un.d_ptr;
+        }
+
+        dyn++;
+    }
+
+    return parsed;
+}
+
 static int get_function_address_from_program_headers(struct dl_phdr_info *info,
                                                      size_t size, void *data) {
     struct address_query *query = (struct address_query *) data;
@@ -61,34 +97,22 @@ static int get_function_address_from_program_headers(struct dl_phdr_info *info,
     for (int i = 0; i < info->dlpi_phnum; i++) {
         const ElfW(Phdr) program_header = info->dlpi_phdr[i];
 
-        if (!is_dynamic_section(program_header)) {
+        if (!is_dynamic_segment(program_header)) {
             continue;
         }
 
-        ElfW(Dyn *)dyn = get_dynamic_section_address(info, program_header);
-        ElfW(Sym *)sym = NULL;
-        char *strtab = 0;
+        struct dynamic_segment dyn = parse_dynamic_segment(get_dynamic_segment_address(info, program_header));
 
-        while (dyn->d_tag != DT_NULL) {
-            if (dyn->d_tag == DT_STRTAB) {
-                strtab = (char *) dyn->d_un.d_ptr;
-            } else if (dyn->d_tag == DT_SYMTAB) {
-                sym = (ElfW(Sym *)) dyn->d_un.d_ptr;
-            }
-
-            dyn++;
-        }
-
-        while ((void *) sym < (void *) strtab) {
-            if (is_symbol_defined(sym) &&
-                symbol_is_named(sym, strtab, query->name)) {
-                query->address = get_symbol_address(info, sym);
+        while ((void *) dyn.sym < (void *) dyn.strtab) {
+            if (is_symbol_defined(dyn.sym) &&
+                symbol_is_named(dyn.sym, dyn.strtab, query->name)) {
+                query->address = get_symbol_address(info, dyn.sym);
 
                 // first object with given symbol wins
                 return 1;
             }
 
-            sym++;
+            dyn.sym++;
         }
     }
 
@@ -105,59 +129,39 @@ static int replace_got_entry(struct dl_phdr_info *info, size_t size, void *data)
     for (int i = 0; i < info->dlpi_phnum; i++) {
         const ElfW(Phdr) program_header = info->dlpi_phdr[i];
 
-        if (!is_dynamic_section(program_header)) {
+        if (!is_dynamic_segment(program_header)) {
             continue;
         }
 
-        ElfW(Dyn *)dyn = get_dynamic_section_address(info, program_header);
-        ElfW(Sym *)sym = NULL;
-        ElfW(Xword) rel_records_size = 0, rel_type = 0;
-        char *rel_base = 0;
-        char *strtab = 0;
+        struct dynamic_segment dyn = parse_dynamic_segment(get_dynamic_segment_address(info, program_header));
 
-        while (dyn->d_tag != DT_NULL) {
-            if (dyn->d_tag == DT_STRTAB) {
-                strtab = (char *) dyn->d_un.d_ptr;
-            } else if (dyn->d_tag == DT_SYMTAB) {
-                sym = (ElfW(Sym *)) dyn->d_un.d_ptr;
-            } else if (dyn->d_tag == DT_PLTRELSZ) {
-                rel_records_size = dyn->d_un.d_val;
-            } else if (dyn->d_tag == DT_PLTREL) {
-                rel_type = dyn->d_un.d_val;
-            } else if (dyn->d_tag == DT_JMPREL) {
-                rel_base = (char *) dyn->d_un.d_ptr;
-            }
-
-            dyn++;
-        }
-
-        if (rel_base == NULL) {
+        if (dyn.relocation_records_address == NULL) {
             return 0;
         }
 
-        size_t rel_entry_size = rel_type ? sizeof(ElfW(Rel*)) : sizeof(ElfW(Rela*));
+        size_t relocation_record_size = dyn.relocation_records_type ? sizeof(ElfW(Rel*)) : sizeof(ElfW(Rela*));
 
-        for (size_t j = 0; j < rel_records_size / rel_entry_size; j++) {
-            if (rel_type == 1) {
-                ElfW(Rel*) rel = (ElfW(Rel*)) (rel_base + rel_entry_size * j);
+        for (size_t j = 0; j < dyn.relocation_records_size / relocation_record_size; j++) {
+            if (dyn.relocation_records_type == 1) {
+                ElfW(Rel*) rel = (ElfW(Rel*)) (dyn.relocation_records_address + relocation_record_size * j);
 
                 if (ELF64_R_TYPE(rel->r_info) != R_X86_64_JUMP_SLOT) {
                     continue;
                 }
 
                 Elf64_Addr rel_addr = info->dlpi_addr + rel->r_offset;
-                if (symbol_is_named(&sym[ELF64_R_SYM(rel->r_info)], strtab, query->name)) {
+                if (symbol_is_named(&dyn.sym[ELF64_R_SYM(rel->r_info)], dyn.strtab, query->name)) {
                     *((Elf64_Addr*)rel_addr) = (Elf64_Addr)query->address;
                 }
             } else {
-                ElfW(Rela*) rela = (ElfW(Rela*)) (rel_base + rel_entry_size * j);
+                ElfW(Rela*) rela = (ElfW(Rela*)) (dyn.relocation_records_address + relocation_record_size * j);
 
                 if (ELF64_R_TYPE(rela->r_info) != R_X86_64_JUMP_SLOT) {
                     continue;
                 }
 
                 Elf64_Addr rela_addr = info->dlpi_addr + rela->r_offset;
-                if (symbol_is_named(&sym[ELF64_R_SYM(rela->r_info)], strtab, query->name)) {
+                if (symbol_is_named(&dyn.sym[ELF64_R_SYM(rela->r_info)], dyn.strtab, query->name)) {
                     *((Elf64_Addr*)rela_addr) = (Elf64_Addr)query->address;
                 }
             }

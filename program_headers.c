@@ -140,6 +140,15 @@ static int replace_got_entry(struct dl_phdr_info *info, size_t size, void *data)
         for (size_t j = 0; j < rel_records_size / rel_entry_size; j++) {
             if (rel_type == 1) {
                 ElfW(Rel*) rel = (ElfW(Rel*)) (rel_base + rel_entry_size * j);
+
+                if (ELF64_R_TYPE(rel->r_info) != R_X86_64_JUMP_SLOT) {
+                    continue;
+                }
+
+                Elf64_Addr rel_addr = info->dlpi_addr + rel->r_offset;
+                if (symbol_is_named(&sym[ELF64_R_SYM(rel->r_info)], strtab, query->name)) {
+                    *((Elf64_Addr*)rel_addr) = (Elf64_Addr)query->address;
+                }
             } else {
                 ElfW(Rela*) rela = (ElfW(Rela*)) (rel_base + rel_entry_size * j);
 

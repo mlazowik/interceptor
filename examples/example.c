@@ -13,9 +13,14 @@ int main() {
     printf("puts address: %p\n", puts);
     puts_orig = intercept_function("puts", my_puts);
     puts("test intercepted");
-    //puts_orig("test orig");
+    puts_orig("test orig");
     printf("puts address: %p\n", puts);
     printf("orig address: %p\n", puts_orig);
+
+    puts("test");
+    dyn_puts();
+
+    unintercept_function("puts");
 
     puts("test");
     dyn_puts();

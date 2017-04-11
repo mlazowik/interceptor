@@ -85,6 +85,9 @@ static int get_function_address_from_program_headers(struct dl_phdr_info *info,
             if (is_symbol_defined(sym) &&
                 symbol_is_named(sym, strtab, query->name)) {
                 query->address = get_symbol_address(info, sym);
+
+                // first object with given symbol wins
+                return 1;
             }
 
             sym++;

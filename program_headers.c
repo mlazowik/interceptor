@@ -47,6 +47,10 @@ static bool symbol_is_named(Elf64_Sym *sym, char *strtab, const char *name) {
     return strcmp(&strtab[sym->st_name], name) == 0;
 }
 
+static char *get_sym_name(struct dynamic_segment *dyn, Elf64_Sym *sym) {
+    return &dyn->strtab[sym->st_name];
+}
+
 void *get_symbol_address(struct dl_phdr_info *info, Elf64_Sym *sym) {
     void *address = (void *) (info->dlpi_addr + sym->st_value);
 
@@ -58,7 +62,7 @@ void *get_symbol_address(struct dl_phdr_info *info, Elf64_Sym *sym) {
     return address;
 }
 
-struct dynamic_segment parse_dynamic_segment(Elf64_Dyn *dyn) {
+const struct dynamic_segment parse_dynamic_segment(Elf64_Dyn *dyn) {
     struct dynamic_segment parsed;
 
     parsed.sym = NULL;
@@ -86,7 +90,7 @@ struct dynamic_segment parse_dynamic_segment(Elf64_Dyn *dyn) {
     return parsed;
 }
 
-struct dynamic_segment get_dynamic_segment(struct dl_phdr_info *info) {
+const struct dynamic_segment get_dynamic_segment(struct dl_phdr_info *info) {
     for (int i = 0; i < info->dlpi_phnum; i++) {
         const Elf64_Phdr program_header = info->dlpi_phdr[i];
 
@@ -107,24 +111,26 @@ static int get_function_address_from_program_headers(struct dl_phdr_info *info,
         return 0;
     }
 
-    struct dynamic_segment dyn = get_dynamic_segment(info);
+    const struct dynamic_segment dyn = get_dynamic_segment(info);
 
-    while ((void *) dyn.sym < (void *) dyn.strtab) {
-        if (is_symbol_defined(dyn.sym) &&
-            symbol_is_named(dyn.sym, dyn.strtab, query->name)) {
-            query->address = get_symbol_address(info, dyn.sym);
+    Elf64_Sym *current_sym = dyn.sym;
+    while ((void *) current_sym < (void *) dyn.strtab) {
+        if (is_symbol_defined(current_sym) &&
+            symbol_is_named(current_sym, dyn.strtab, query->name)) {
+            query->address = get_symbol_address(info, current_sym);
 
             // first object with given symbol wins
             return 1;
         }
 
-        dyn.sym++;
+        current_sym++;
     }
 
     return 0;
 }
 
-static int replace_got_entry(struct dl_phdr_info *info, size_t size, void *data) {
+static int
+replace_got_entry(struct dl_phdr_info *info, size_t size, void *data) {
     struct address_query *query = (struct address_query *) data;
 
     if (is_vdso(info)) {
@@ -141,9 +147,12 @@ static int replace_got_entry(struct dl_phdr_info *info, size_t size, void *data)
                                     ? sizeof(Elf64_Rel *)
                                     : sizeof(Elf64_Rela *);
 
-    for (size_t j = 0;
-         j < dyn.relocation_records_size / relocation_record_size; j++) {
-        // Elf64_Rel is a prefix of Elf64_Rela, we do not care about the extra field
+    size_t relocation_record_count =
+            dyn.relocation_records_size / relocation_record_size;
+
+    for (size_t j = 0; j < relocation_record_count; j++) {
+        // Elf64_Rel is a prefix of Elf64_Rela, we do not care about the extra
+        // field
         Elf64_Rel *rel = (Elf64_Rel *) (dyn.relocation_records_address +
                                         relocation_record_size * j);
 

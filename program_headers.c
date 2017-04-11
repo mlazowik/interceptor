@@ -148,33 +148,18 @@ replace_got_entry(struct dl_phdr_info *info, size_t size, void *data) {
 
         for (size_t j = 0;
              j < dyn.relocation_records_size / relocation_record_size; j++) {
-            if (dyn.relocation_records_type == 1) {
-                Elf64_Rel *rel = (Elf64_Rel *) (dyn.relocation_records_address +
-                                                relocation_record_size * j);
+            // Elf64_Rel is a prefix of Elf64_Rela, we do not care about the extra fields
+            Elf64_Rel *rel = (Elf64_Rel *) (dyn.relocation_records_address +
+                                            relocation_record_size * j);
 
-                if (ELF64_R_TYPE(rel->r_info) != R_X86_64_JUMP_SLOT) {
-                    continue;
-                }
+            if (ELF64_R_TYPE(rel->r_info) != R_X86_64_JUMP_SLOT) {
+                continue;
+            }
 
-                Elf64_Addr rel_addr = info->dlpi_addr + rel->r_offset;
-                if (symbol_is_named(&dyn.sym[ELF64_R_SYM(rel->r_info)],
-                                    dyn.strtab, query->name)) {
-                    *((Elf64_Addr *) rel_addr) = (Elf64_Addr) query->address;
-                }
-            } else {
-                Elf64_Rela *rela = (Elf64_Rela *) (
-                        dyn.relocation_records_address +
-                        relocation_record_size * j);
-
-                if (ELF64_R_TYPE(rela->r_info) != R_X86_64_JUMP_SLOT) {
-                    continue;
-                }
-
-                Elf64_Addr rela_addr = info->dlpi_addr + rela->r_offset;
-                if (symbol_is_named(&dyn.sym[ELF64_R_SYM(rela->r_info)],
-                                    dyn.strtab, query->name)) {
-                    *((Elf64_Addr *) rela_addr) = (Elf64_Addr) query->address;
-                }
+            Elf64_Addr rel_addr = info->dlpi_addr + rel->r_offset;
+            if (symbol_is_named(&dyn.sym[ELF64_R_SYM(rel->r_info)],
+                                dyn.strtab, query->name)) {
+                *((Elf64_Addr *) rel_addr) = (Elf64_Addr) query->address;
             }
         }
     }
